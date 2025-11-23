@@ -1,6 +1,6 @@
 package com.PPPL.backend.repository;
 
-import com.PPPL.backend.entity.Manager;
+import com.PPPL.backend.model.Manager;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;

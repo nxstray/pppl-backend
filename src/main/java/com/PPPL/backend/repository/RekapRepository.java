@@ -1,9 +1,11 @@
 package com.PPPL.backend.repository;
 
-import com.PPPL.backend.entity.Rekap;
-import com.PPPL.backend.entity.StatusRekap;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
+import com.PPPL.backend.model.Rekap;
+import com.PPPL.backend.model.StatusRekap;
+
 import java.util.List;
 
 @Repository
