@@ -38,7 +38,38 @@ public class RequestLayanan {
     @Temporal(TemporalType.DATE)
     private Date tglVerifikasi;
     
-    // Menambahkan field untuk keterangan jika ditolak
     @Column(name = "keterangan_penolakan", columnDefinition = "TEXT")
     private String keteranganPenolakan;
+
+    // Data dari form client
+    @Column(name = "perusahaan", length = 200)
+    private String perusahaan;
+    
+    @Column(name = "topic", length = 100)
+    private String topic;
+    
+    @Column(name = "pesan", columnDefinition = "TEXT")
+    private String pesan;
+    
+    @Column(name = "anggaran", length = 50)
+    private String anggaran;
+    
+    @Column(name = "waktu_implementasi", length = 50)
+    private String waktuImplementasi;
+
+    @Column(name = "skor_prioritas", length = 20)
+    private String skorPrioritas;
+    
+    @Column(name = "kategori_lead", length = 50)
+    private String kategoriLead;
+    
+    @Column(name = "alasan_skor", columnDefinition = "TEXT")
+    private String alasanSkor;
+    
+    @Column(name = "tgl_analisa_ai")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date tglAnalisaAi;
+    
+    @Column(name = "ai_analyzed")
+    private Boolean aiAnalyzed = false;
 }
