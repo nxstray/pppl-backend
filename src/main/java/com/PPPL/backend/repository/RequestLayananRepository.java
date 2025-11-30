@@ -17,6 +17,6 @@ public interface RequestLayananRepository extends JpaRepository<RequestLayanan, 
     
     List<RequestLayanan> findByLayanan_IdLayanan(Integer idLayanan);
     
-    // Untuk mendapatkan request yang sedang menunggu verifikasi
+    // buat mendapatkan request yang sedang menunggu verifikasi
     List<RequestLayanan> findByStatusOrderByTglRequestAsc(StatusRequest status);
 }
