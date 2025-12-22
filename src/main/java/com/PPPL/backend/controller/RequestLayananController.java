@@ -3,96 +3,112 @@ package com.PPPL.backend.controller;
 import com.PPPL.backend.data.ApiResponse;
 import com.PPPL.backend.data.RequestLayananDTO;
 import com.PPPL.backend.model.RequestLayanan;
-import com.PPPL.backend.handler.ResourceNotFoundException;
-import com.PPPL.backend.repository.RequestLayananRepository;
+import com.PPPL.backend.model.StatusRequest;
 import com.PPPL.backend.service.RequestLayananService;
-import com.PPPL.backend.util.EntityMapper;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/request-layanan")
+@RequestMapping("/api/admin/request-layanan")
 @CrossOrigin(origins = "http://localhost:4200")
+@PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN','MANAGER')")
 public class RequestLayananController {
-    
+
     @Autowired
     private RequestLayananService requestLayananService;
-    
-    @Autowired
-    private RequestLayananRepository requestLayananRepository;
-    
-    @Autowired
-    private EntityMapper mapper;
-    
+
+    /**       
+     * Get all request layanan
+    **/
     @GetMapping
-    public ResponseEntity<ApiResponse<List<RequestLayananDTO>>> getAllRequestLayanan() {
-        List<RequestLayananDTO> requestList = requestLayananRepository.findAll()
-            .stream()
-            .map(mapper::toDTO)
-            .collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.success(requestList));
+    public ResponseEntity<ApiResponse<List<RequestLayananDTO>>> getAll() {
+        List<RequestLayananDTO> data = requestLayananService.findAll()
+                .stream()
+                .map(this::toDTO)
+                .sorted(Comparator.comparing(RequestLayananDTO::getTglRequest).reversed())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(ApiResponse.success(data));
     }
-    
+
+    /**       
+     * Get request layanan by ID
+    **/
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<RequestLayananDTO>> getRequestLayananById(@PathVariable Integer id) {
-        RequestLayanan request = requestLayananRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Request layanan tidak ditemukan dengan ID: " + id));
-        return ResponseEntity.ok(ApiResponse.success(mapper.toDTO(request)));
+    public ResponseEntity<ApiResponse<RequestLayananDTO>> getById(@PathVariable Integer id) {
+        return ResponseEntity.ok(
+                ApiResponse.success(toDTO(requestLayananService.findById(id)))
+        );
     }
-    
-    @GetMapping("/menunggu-verifikasi")
-    public ResponseEntity<ApiResponse<List<RequestLayananDTO>>> getRequestMenungguVerifikasi() {
-        List<RequestLayananDTO> requestList = requestLayananService.getRequestMenungguVerifikasi()
-            .stream()
-            .map(mapper::toDTO)
-            .collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.success(requestList));
+
+    /**       
+     * Get request layanan by status
+    **/
+    @GetMapping("/status/{status}")
+    public ResponseEntity<ApiResponse<List<RequestLayananDTO>>> byStatus(
+            @PathVariable StatusRequest status) {
+
+        List<RequestLayananDTO> data = requestLayananService.findByStatus(status)
+                .stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(ApiResponse.success(data));
     }
-    
-    @GetMapping("/klien/{idKlien}")
-    public ResponseEntity<ApiResponse<List<RequestLayananDTO>>> getRequestByKlien(@PathVariable Integer idKlien) {
-        List<RequestLayananDTO> requestList = requestLayananService.getRequestByKlien(idKlien)
-            .stream()
-            .map(mapper::toDTO)
-            .collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.success(requestList));
+
+    /**       
+     * Approve request layanan
+    **/
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<ApiResponse<RequestLayananDTO>> approve(@PathVariable Integer id) {
+        RequestLayanan approved = requestLayananService.approve(id);
+        return ResponseEntity.ok(
+                ApiResponse.success("Request berhasil diverifikasi", toDTO(approved))
+        );
     }
-    
-    @PostMapping
-    public ResponseEntity<ApiResponse<RequestLayananDTO>> createRequestLayanan(@RequestBody Map<String, Integer> payload) {
-        Integer idKlien = payload.get("idKlien");
-        Integer idLayanan = payload.get("idLayanan");
-        
-        RequestLayanan created = requestLayananService.createRequestLayanan(idKlien, idLayanan);
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success("Request layanan berhasil dibuat", mapper.toDTO(created)));
-    }
-    
-    @PostMapping("/{id}/verifikasi")
-    public ResponseEntity<ApiResponse<Void>> verifikasiRequestLayanan(
+
+    /**       
+     * Reject request layanan
+    **/
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<RequestLayananDTO>> reject(
             @PathVariable Integer id,
-            @RequestBody Map<String, Object> payload) {
-        Integer idManager = (Integer) payload.get("idManager");
-        String hasilMeeting = (String) payload.get("hasilMeeting");
-        
-        requestLayananService.verifikasiRequestLayanan(id, idManager, hasilMeeting);
-        return ResponseEntity.ok(ApiResponse.success("Request berhasil diverifikasi", null));
+            @RequestBody RejectRequest body) {
+
+        RequestLayanan rejected = requestLayananService.reject(id, body.keterangan);
+        return ResponseEntity.ok(
+                ApiResponse.success("Request berhasil ditolak", toDTO(rejected))
+        );
     }
-    
-    @PostMapping("/{id}/tolak")
-    public ResponseEntity<ApiResponse<Void>> tolakRequestLayanan(
-            @PathVariable Integer id,
-            @RequestBody Map<String, Object> payload) {
-        String keteranganPenolakan = (String) payload.get("keteranganPenolakan");
-        Boolean hapusKlien = (Boolean) payload.getOrDefault("hapusKlien", false);
-        
-        requestLayananService.tolakRequestLayanan(id, keteranganPenolakan, hapusKlien);
-        return ResponseEntity.ok(ApiResponse.success("Request berhasil ditolak", null));
+
+    /**       
+     * DTO Mapper
+    **/
+    private RequestLayananDTO toDTO(RequestLayanan r) {
+        RequestLayananDTO dto = new RequestLayananDTO();
+        dto.setIdRequest(r.getIdRequest());
+        dto.setIdLayanan(r.getLayanan().getIdLayanan());
+        dto.setNamaLayanan(r.getLayanan().getNamaLayanan());
+        dto.setIdKlien(r.getKlien().getIdKlien());
+        dto.setNamaKlien(r.getKlien().getNamaKlien());
+        dto.setTglRequest(r.getTglRequest());
+        dto.setStatus(r.getStatus());
+        dto.setTglVerifikasi(r.getTglVerifikasi());
+        dto.setKeteranganPenolakan(r.getKeteranganPenolakan());
+        return dto;
+    }
+
+    /**       
+     * Inner class for reject request body
+    **/
+    public static class RejectRequest {
+        public String keterangan;
     }
 }
