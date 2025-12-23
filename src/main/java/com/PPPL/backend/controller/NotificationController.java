@@ -2,6 +2,7 @@ package com.PPPL.backend.controller;
 
 import com.PPPL.backend.data.ApiResponse;
 import com.PPPL.backend.data.NotificationDTO;
+import com.PPPL.backend.service.EmailService;
 import com.PPPL.backend.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,9 @@ public class NotificationController {
     
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private EmailService emailService;
     
     /**
      * Get all notifications
@@ -76,6 +80,22 @@ public class NotificationController {
         }
     }
     
+    @PostMapping("/test-email")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<String>> testEmail(@RequestParam String to) {
+        try {
+            emailService.sendEmail(
+                to,
+                "TEST EMAIL SMTP",
+                "<h3>SMTP berhasil! </h3><p>Email ini dikirim dari backend</p>"
+            );
+            return ResponseEntity.ok(ApiResponse.success("Email berhasil dikirim"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.error("Gagal kirim email: " + e.getMessage()));
+        }
+    }
+
     /**
      * Mark notification as read
      */
