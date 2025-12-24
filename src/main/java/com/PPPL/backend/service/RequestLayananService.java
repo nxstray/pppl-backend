@@ -1,9 +1,11 @@
 package com.PPPL.backend.service;
 
 import com.PPPL.backend.data.RequestLayananStatisticsDTO;
-import com.PPPL.backend.model.*;
-import com.PPPL.backend.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.PPPL.backend.event.NotificationEventPublisher;
+import com.PPPL.backend.model.RequestLayanan;
+import com.PPPL.backend.model.StatusRequest;
+import com.PPPL.backend.repository.RequestLayananRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,137 +13,110 @@ import java.util.Date;
 import java.util.List;
 
 @Service
+@Slf4j
 public class RequestLayananService {
 
-    @Autowired
-    private RequestLayananRepository requestLayananRepository;
+    private final RequestLayananRepository requestLayananRepository;
+    private final NotificationEventPublisher notificationPublisher;
 
-    @Autowired
-    private KlienRepository klienRepository;
-
-    @Autowired
-    private LayananRepository layananRepository;
-
-    @Autowired
-    private NotificationService notificationService;
-
-    /**       
-     * Helper method to get a pending request and validate its status.
-    **/
-    @Transactional
-    public RequestLayanan create(Integer idKlien, Integer idLayanan) {
-        Klien klien = klienRepository.findById(idKlien)
-                .orElseThrow(() -> new RuntimeException("Klien tidak ditemukan"));
-
-        Layanan layanan = layananRepository.findById(idLayanan)
-                .orElseThrow(() -> new RuntimeException("Layanan tidak ditemukan"));
-
-        RequestLayanan request = new RequestLayanan();
-        request.setKlien(klien);
-        request.setLayanan(layanan);
-        request.setTglRequest(new Date());
-        request.setStatus(StatusRequest.MENUNGGU_VERIFIKASI);
-
-        return requestLayananRepository.save(request);
+    public RequestLayananService(
+            RequestLayananRepository requestLayananRepository,
+            NotificationEventPublisher notificationPublisher
+    ) {
+        this.requestLayananRepository = requestLayananRepository;
+        this.notificationPublisher = notificationPublisher;
     }
 
-    /**       
-     * Helper method to get a pending request and validate its status.
-    **/
-    @Transactional
-    public RequestLayanan approve(Integer idRequest) {
-
-        RequestLayanan request = getPendingRequest(idRequest);
-
-        request.setStatus(StatusRequest.VERIFIKASI);
-        request.setTglVerifikasi(new Date());
-        request.setKeteranganPenolakan(null);
-
-        Klien klien = request.getKlien();
-        klien.setStatus(StatusKlien.BELUM);
-        klienRepository.save(klien);
-
-        return requestLayananRepository.save(request);
-    }
-    
-    /**       
-     * Helper method to get a pending request and validate its status.
-    **/
-    @Transactional
-    public RequestLayanan reject(Integer idRequest, String alasan) {
-
-        if (alasan == null || alasan.trim().isEmpty()) {
-            throw new RuntimeException("Alasan penolakan wajib diisi");
-        }
-
-        RequestLayanan request = getPendingRequest(idRequest);
-
-        request.setStatus(StatusRequest.DITOLAK);
-        request.setTglVerifikasi(new Date());
-        request.setKeteranganPenolakan(alasan);
-
-        RequestLayanan saved = requestLayananRepository.save(request);
-
-        Klien klien = saved.getKlien();
-        Layanan layanan = saved.getLayanan();
-
-        notificationService.createNotificationAndSendEmail(
-            "REQUEST_DITOLAK",
-            "Request Layanan Ditolak",
-            """
-            Halo %s,
-
-            Mohon maaf, request layanan "%s" tidak dapat kami proses.
-
-            Alasan penolakan:
-            %s
-            """.formatted(
-                klien.getNamaKlien(),
-                layanan.getNamaLayanan(),
-                alasan
-            ),
-            "/dashboard/request-layanan",
-            klien.getEmailKlien()
-        );
-
-        return saved;
-    }
-
-
-    /**       
-     * Helper method to get a pending request and validate its status.
-    **/
     public List<RequestLayanan> findAll() {
         return requestLayananRepository.findAll();
     }
 
     public RequestLayanan findById(Integer id) {
         return requestLayananRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Request tidak ditemukan"));
+                .orElseThrow(() -> new RuntimeException("Request layanan tidak ditemukan"));
     }
 
     public List<RequestLayanan> findByStatus(StatusRequest status) {
-        return requestLayananRepository.findByStatusOrderByTglRequestAsc(status);
+        return requestLayananRepository.findByStatus(status);
     }
 
-    /**       
-     * Returns statistics of request layanan.
-    **/
     public RequestLayananStatisticsDTO getStatistics() {
-        return new RequestLayananStatisticsDTO(
-            requestLayananRepository.count(),
-            requestLayananRepository.countByStatus(StatusRequest.MENUNGGU_VERIFIKASI),
-            requestLayananRepository.countByStatus(StatusRequest.VERIFIKASI),
-            requestLayananRepository.countByStatus(StatusRequest.DITOLAK)
-        );
+        long total = requestLayananRepository.count();
+        long menungguVerifikasi = requestLayananRepository.countByStatus(StatusRequest.MENUNGGU_VERIFIKASI);
+        long diverifikasi = requestLayananRepository.countByStatus(StatusRequest.VERIFIKASI);
+        long ditolak = requestLayananRepository.countByStatus(StatusRequest.DITOLAK);
+
+        return new RequestLayananStatisticsDTO(total, menungguVerifikasi, diverifikasi, ditolak);
     }
 
-    private RequestLayanan getPendingRequest(Integer idRequest) {
-        RequestLayanan request = findById(idRequest);
-
-        if (request.getStatus() != StatusRequest.MENUNGGU_VERIFIKASI) {
-            throw new RuntimeException("Request sudah diproses sebelumnya");
+    /**
+     * APPROVE REQUEST - dengan notifikasi realtime
+     */
+    @Transactional
+    public RequestLayanan approve(Integer id) {
+        RequestLayanan request = findById(id);
+        
+        if (request.getStatus() == StatusRequest.VERIFIKASI) {
+            throw new RuntimeException("Request sudah diverifikasi sebelumnya");
         }
-        return request;
+
+        request.setStatus(StatusRequest.VERIFIKASI);
+        request.setTglVerifikasi(new Date());
+        request.setKeteranganPenolakan(null);
+
+        RequestLayanan saved = requestLayananRepository.save(request);
+
+        // PUBLISH NOTIFICATION TO RABBITMQ (Realtime)
+        String namaKlien = saved.getKlien().getNamaKlien();
+        String namaLayanan = saved.getLayanan().getNamaLayanan();
+        
+        notificationPublisher.publishFullNotification(
+                "REQUEST_VERIFIED",
+                "Request Berhasil Diverifikasi",
+                String.format("%s meminta layanan %s. Menunggu verifikasi.", namaKlien, namaLayanan),
+                "/admin/request-layanan/" + saved.getIdRequest(),
+                saved.getKlien().getEmailKlien()
+        );
+
+        log.info("Request {} APPROVED and notification sent", id);
+        return saved;
+    }
+
+    /**
+     * REJECT REQUEST - dengan notifikasi realtime
+     */
+    @Transactional
+    public RequestLayanan reject(Integer id, String keterangan) {
+        RequestLayanan request = findById(id);
+        
+        if (request.getStatus() == StatusRequest.DITOLAK) {
+            throw new RuntimeException("Request sudah ditolak sebelumnya");
+        }
+
+        request.setStatus(StatusRequest.DITOLAK);
+        request.setTglVerifikasi(new Date());
+        request.setKeteranganPenolakan(keterangan);
+
+        RequestLayanan saved = requestLayananRepository.save(request);
+
+        // PUBLISH NOTIFICATION TO RABBITMQ
+        String namaKlien = saved.getKlien().getNamaKlien();
+        String namaLayanan = saved.getLayanan().getNamaLayanan();
+        
+        notificationPublisher.publishFullNotification(
+                "REQUEST_REJECTED",
+                "Request Ditolak",
+                String.format("Request dari %s untuk layanan %s telah ditolak. Alasan: %s", 
+                        namaKlien, namaLayanan, keterangan),
+                "/admin/request-layanan/" + saved.getIdRequest(),
+                saved.getKlien().getEmailKlien()
+        );
+
+        log.info("Request {} REJECTED and notification sent", id);
+        return saved;
+    }
+
+    public RequestLayanan save(RequestLayanan request) {
+        return requestLayananRepository.save(request);
     }
 }
