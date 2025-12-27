@@ -11,7 +11,7 @@ import java.util.Date;
 @Component
 public class JwtUtil {
     
-    @Value("${jwt.secret:pandawa-digital-indonesia-secret-key-2024-very-secure-minimum-256-bits}")
+    @Value("${jwt.secret}")
     private String secret;
     
     @Value("${jwt.expiration:86400000}") // 24 hours in milliseconds
