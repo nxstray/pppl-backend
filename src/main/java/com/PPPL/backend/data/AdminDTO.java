@@ -15,6 +15,7 @@ public class AdminDTO {
     private String email;
     private AdminRole role;
     private Boolean isActive;
+    private String fotoProfil;
     private java.util.Date lastLogin;
     private java.util.Date createdAt;
 }
