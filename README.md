@@ -106,7 +106,7 @@ Authorization: Bearer <your-jwt-token>
 
 - 🟢 **Public** — Tidak perlu auth
 - 🔵 **Bearer Token** — Perlu login (semua role)
-- 🟠 **MANAGER+** — Perlu role MANAGER, ADMIN, atau SUPER_ADMIN
+- 🟠 **MANAGER+** — Perlu role MANAGER atau SUPER_ADMIN
 - 🔴 **SUPER_ADMIN** — Hanya SUPER_ADMIN
 
 ---
