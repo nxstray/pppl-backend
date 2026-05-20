@@ -112,6 +112,7 @@ public class SecurityConfig {
                     "/actuator/health",
                     "/api/auth/**",
                     "/api/public/**",
+                    "/api/system/keepalive/**",
                     "/uploads/**",
                     "/ws/**",
                     "/api/ws/**"
